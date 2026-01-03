@@ -10,14 +10,14 @@ TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 genai.configure(api_key=GEMINI_API_KEY)
 
-# Google Arama özelliği açık model
+# Model ismini guncelledik
 model = genai.GenerativeModel(
-    'models/gemini-1.5-flash',
+    'gemini-1.5-flash-001',
     tools='google_search_retrieval'
 )
 
 def arastirma_yap():
-    konu = "Yapay zeka ve teknoloji dünyasında son 24 saatteki en önemli gelişmeler"
+    konu = "Nasdaq'da Yapay zeka ve teknoloji dünyasında son 24 saatteki en önemli gelişmeleri ver. Hangi hisseler swing trade icin uygun"
     try:
         # Grounding (Google Arama) ile prompt
         prompt = f"Şu konuda internette güncel bir arama yap ve önemli başlıkları özetle: {konu}. Yanıtı Türkçe, emoji kullanarak ve maddeler halinde ver. Kaynak linkleri ekleme."
