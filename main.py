@@ -16,7 +16,7 @@ genai.configure(api_key=GEMINI_API_KEY)
 # --- MODEL SEÇİMİ: GEMINI 1.5 PRO ---
 # Finansal analiz ve mantık yürütme için en güçlü model budur.
 model = genai.GenerativeModel(
-    'gemini-1.5-pro', 
+    'gemini-3.0-pro', 
     tools='google_search_retrieval'
 )
 
