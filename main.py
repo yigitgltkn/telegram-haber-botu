@@ -1,78 +1,70 @@
 import os
-import google.generativeai as genai
 import requests
 import datetime
+from google import genai
+from google.genai import types
 
 # --- AYARLAR ---
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-# Tarihi alalım (Analizin güncelliği için)
+# Tarih (Analiz güncelliği için)
 bugun = datetime.date.today().strftime("%d %B %Y")
 
-genai.configure(api_key=GEMINI_API_KEY)
-
-# --- MODEL SEÇİMİ: GEMINI 1.5 PRO ---
-# Finansal analiz ve mantık yürütme için en güçlü model budur.
-model = genai.GenerativeModel(
-    'gemini-1.5-pro', 
-    tools='google_search_retrieval'
-)
+# --- YENİ NESİL CLIENT TANIMLAMASI ---
+client = genai.Client(api_key=GEMINI_API_KEY)
 
 def piyasa_analizi_yap():
-    # Swing Trader Prompt Mühendisliği
     prompt = f"""
-    Sen, Wall Street tecrübesi olan kıdemli bir Swing Trader ve Teknik Analistsin.
-    Bugünün tarihi: {bugun}.
+    Sen kıdemli bir Swing Trader ve Teknik Analistsin. Tarih: {bugun}.
     
-    Görevin: İnternetteki güncel finansal verileri, teknik analiz raporlarını ve haber akışını tarayarak bana (bir Swing Trader'a) özel bir rapor hazırlamak.
+    Görevin: Google Arama özelliğini kullanarak güncel piyasayı tara.
+    1. NASDAQ ve ALTIN (XAU/USD) teknik görünümü ne? (EMA, RSI durumu)
+    2. Swing Trade için uygun potansiyeli olan 3 hisse veya emtia bul.
+    3. Genel strateji: Alıcı mı olmalıyım, satıcı mı?
     
-    Lütfen şu adımları izleyerek derinlemesine bir araştırma yap (Google Search kullan):
-    
-    1. **GENEL PİYASA YÖNÜ (NASDAQ & ALTIN):**
-       - NASDAQ 100 ve ONS ALTIN (XAU/USD) için son 24 saatteki en kritik haberler neler?
-       - Teknik görünüm ne diyor? (RSI, MACD ve EMA 50/200 ortalamalarının üzerinde miyiz, altında mıyız? Trend yukarı mı aşağı mı?)
-       - Korku ve Açgözlülük endeksi ne durumda?
-
-    2. **SWING TRADE İÇİN TOP 5 NASDAQ HİSSESİ:**
-       - Şu an momentumu yüksek, teknik olarak "AL" sinyali veren veya dipten dönüş yapan 5 NASDAQ hissesini belirle.
-       - Neden bunları seçtiğini 1 cümleyle açıkla (Örn: "RSI aşırı satımdan dönüyor" veya "Hacimli kırılım var").
-
-    3. **STRATEJİ VE SONUÇ:**
-       - Bugün nakitte mi kalmalıyım, mal mı toplamalıyım yoksa kar satışı mı yapmalıyım?
-       - Net bir strateji önerisi ver.
-
-    **Çıktı Formatı:**
-    Yanıtı Telegram mesajı olarak okunacak şekilde, bol emojili, maddeler halinde ve Türkçe olarak ver. Finansal terimleri (Support, Resistance, EMA) kullanabilirsin.
+    Yanıtı Türkçe, emojili ve Telegram'da okunacak şekilde maddeler halinde ver.
     """
     
     try:
-        print("Piyasa taranıyor ve teknik analizler inceleniyor...")
-        response = model.generate_content(prompt)
+        print("Yeni nesil Gemini 1.5 Pro piyasayı tarıyor...")
+        
+        response = client.models.generate_content(
+            model='gemini-3-pro-preview', # Şu an erişebileceğin en güçlü model
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                tools=[types.Tool(
+                    google_search=types.GoogleSearch() # Google Arama Aracı
+                )]
+            )
+        )
+        
+        # Yanıtın içinden metni alıyoruz
         return response.text
+        
     except Exception as e:
         return f"Analiz hatası: {str(e)}"
 
 def telegrama_gonder(mesaj):
-    # Mesaj çok uzunsa Telegram hata verebilir, 4096 karaktere bölelim
-    max_uzunluk = 4000
-    parcalar = [mesaj[i:i+max_uzunluk] for i in range(0, len(mesaj), max_uzunluk)]
+    # Mesajı Telegram'a gönder
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     
-    for parca in parcalar:
-        url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-        payload = {
-            'chat_id': TELEGRAM_CHAT_ID,
-            'text': parca, # Markdown hatası almamak için düz text veya HTML denenebilir, şimdilik text.
-            'parse_mode': '' # Markdown bazen * karakterlerinde hata verir, boş bıraktık.
-        }
-        requests.post(url, data=payload)
+    # Çok uzun mesajları bölmek gerekebilir ama şimdilik tek parça deneyelim
+    if len(mesaj) > 4000:
+        mesaj = mesaj[:4000] + "...(devamı kesildi)"
+
+    payload = {
+        'chat_id': TELEGRAM_CHAT_ID,
+        'text': f"🚀 **SWING TRADE RAPORU**\n📅 {bugun}\n\n{mesaj}",
+        # Markdown kullanmıyoruz çünkü finansal semboller (*, _) bazen hata verdiriyor
+    }
+    requests.post(url, data=payload)
 
 if __name__ == "__main__":
-    analiz = piyasa_analizi_yap()
-    if analiz:
-        baslik = f"📈 **GÜNLÜK SWING TRADE RAPORU ({bugun})**\n\n"
-        telegrama_gonder(baslik + analiz)
-        print("Rapor gönderildi.")
+    rapor = piyasa_analizi_yap()
+    if rapor:
+        telegrama_gonder(rapor)
+        print("Rapor başarıyla gönderildi.")
     else:
-        print("İçerik oluşturulamadı.")
+        print("Rapor oluşturulamadı.")
