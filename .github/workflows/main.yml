@@ -1,0 +1,29 @@
+name: Gunluk Haber Botu
+
+on:
+  schedule:
+    - cron: '0 6 * * *' # Her sabah TR saatiyle 09:00
+  workflow_dispatch: # Manuel çalıştırma butonu
+
+jobs:
+  calistir:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Depoyu Çek
+        uses: actions/checkout@v3
+
+      - name: Python Kur
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Kütüphaneleri Yükle
+        run: pip install -r requirements.txt
+
+      - name: Botu Çalıştır
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        run: python main.py
