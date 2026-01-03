@@ -45,18 +45,16 @@ def piyasa_analizi_yap():
     Yanıtı Türkçe, kısa, öz ve tamamen teknik odaklı ver.
     """
     
-    print("Gemini 3.0 Pro (Thinking Mode: HIGH + Search) çalışıyor...")
+    print("Gemini 3.0 Pro (Varsayılan Thinking: HIGH + Search) çalışıyor...")
     
     try:
-        # Sadece Gemini 3.0 Pro kullanıyoruz
         response = client.models.generate_content(
             model='gemini-3-pro-preview',
             contents=prompt,
             config=types.GenerateContentConfig(
-                # Derinlemesine düşünme modu açık
-                thinking_config=types.ThinkingConfig(thinking_level="high"),
+                # thinking_config kısmını sildik, model zaten varsayılan olarak en yüksek seviyede düşünür.
                 
-                # Google Arama entegrasyonu
+                # Sadece Google Arama aracını bırakıyoruz:
                 tools=[types.Tool(
                     google_search=types.GoogleSearch()
                 )],
@@ -66,20 +64,19 @@ def piyasa_analizi_yap():
         return response.text
         
     except Exception as e:
-        # Yedek sistem yok, hata varsa direkt bildir.
-        return f"❌ Gemini 3.0 Pro Hatası: {str(e)}"
+        return f"❌ Hata: {str(e)}"
 
 def telegrama_gonder(mesaj):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     
-    # Mesaj çok uzunsa bölüyoruz
+    # Mesaj çok uzunsa 4000 karakterde bölüyoruz
     limit = 4000
     parcalar = [mesaj[i:i+limit] for i in range(0, len(mesaj), limit)]
 
     for parca in parcalar:
         payload = {
             'chat_id': TELEGRAM_CHAT_ID,
-            'text': f"🧠 **SAFEBLADE AI (GEMINI 3.0 ONLY)**\n📅 {bugun}\n\n{parca}",
+            'text': f"🧠 **SAFEBLADE AI**\n📅 {bugun}\n\n{parca}",
         }
         requests.post(url, data=payload)
 
