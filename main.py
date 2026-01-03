@@ -13,8 +13,8 @@ bugun = datetime.date.today().strftime("%d %B %Y")
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 def piyasa_analizi_yap():
-    # SafeBlade Stratejisi
-   prompt = f"""
+    # --- SAFEBLADE STRATEJİSİ ---
+    prompt = f"""
     GÖREV: Sen benim 'Algoritmik Ön Tarama Asistanımsın'. Tarih: {bugun}.
     
     STRATEJİM (SafeBlade): Ben sadece "Yükseliş Trendindeki Düzeltmeleri" (Trend Pullback) satın alırım.
@@ -45,57 +45,41 @@ def piyasa_analizi_yap():
     Yanıtı Türkçe, kısa, öz ve tamamen teknik odaklı ver.
     """
     
-    print("Gemini 3 Pro (Thinking Mode + Search) piyasayı analiz ediyor...")
+    print("Gemini 3.0 Pro (Thinking Mode: HIGH + Search) çalışıyor...")
     
     try:
+        # Sadece Gemini 3.0 Pro kullanıyoruz
         response = client.models.generate_content(
-            model='gemini-3-pro-preview', #
+            model='gemini-3-pro-preview',
             contents=prompt,
             config=types.GenerateContentConfig(
-                # --- THINKING AYARLARI ---
-                # Modelin cevap vermeden önce derinlemesine düşünmesini sağlar
-                # 'thinking_level="high"' en detaylı mantık yürütmeyi açar.
-                thinking_config=types.ThinkingConfig(thinking_level="high"), #
+                # Derinlemesine düşünme modu açık
+                thinking_config=types.ThinkingConfig(thinking_level="high"),
                 
-                # --- GOOGLE ARAMA ---
-                # Thinking moduyla beraber arama aracını da kullanıyoruz
+                # Google Arama entegrasyonu
                 tools=[types.Tool(
                     google_search=types.GoogleSearch()
                 )],
                 response_mime_type="text/plain"
             )
         )
-        
-        # Thinking modelleri bazen düşüncelerini de yazar, biz final cevabı alalım.
         return response.text
         
     except Exception as e:
-        # Eğer 'thinking_level' henüz hesabınızda aktif değilse veya model hata verirse
-        # otomatik olarak standart modele (1.5 Pro) düşen yedek sistem:
-        print(f"Thinking model hatası: {e}. Standart modele geçiliyor...")
-        try:
-            fallback_response = client.models.generate_content(
-                model='gemini-1.5-pro',
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    tools=[types.Tool(google_search=types.GoogleSearch())]
-                )
-            )
-            return fallback_response.text
-        except Exception as e2:
-            return f"Kritik Hata: {str(e2)}"
+        # Yedek sistem yok, hata varsa direkt bildir.
+        return f"❌ Gemini 3.0 Pro Hatası: {str(e)}"
 
 def telegrama_gonder(mesaj):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     
-    # Mesaj çok uzunsa böl (Thinking modelleri uzun yazar)
+    # Mesaj çok uzunsa bölüyoruz
     limit = 4000
     parcalar = [mesaj[i:i+limit] for i in range(0, len(mesaj), limit)]
 
     for parca in parcalar:
         payload = {
             'chat_id': TELEGRAM_CHAT_ID,
-            'text': f"🧠 **SAFEBLADE AI (THINKING)**\n📅 {bugun}\n\n{parca}",
+            'text': f"🧠 **SAFEBLADE AI (GEMINI 3.0 ONLY)**\n📅 {bugun}\n\n{parca}",
         }
         requests.post(url, data=payload)
 
