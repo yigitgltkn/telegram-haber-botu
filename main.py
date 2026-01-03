@@ -9,8 +9,12 @@ GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-bugun = datetime.date.today().strftime("%d %B %Y")
-client = genai.Client(api_key=GEMINI_API_KEY)
+# Saat ayarları (Veri güncelliğini kontrol etmek için)
+tr_timezone = pytz.timezone('Europe/Istanbul')
+simdi = datetime.datetime.now(tr_timezone)
+bugun_tarih = simdi.strftime("%d %B %Y")
+bugun_kisa = simdi.strftime("%Y-%m-%d")
+saat = simdi.hour
 
 def piyasa_analizi_yap():
     # --- SAFEBLADE STRATEJİSİ ---
