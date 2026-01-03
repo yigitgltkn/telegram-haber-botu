@@ -47,44 +47,57 @@ def piyasa_analizi_yap():
     Yanıtı Türkçe, kısa, öz ve tamamen teknik odaklı ver.
     """
     
-    try:
-        print("Yeni nesil Gemini 3.0 Pro piyasayı tarıyor...")
-        
-        response = client.models.generate_content(
-            model='gemini-3-pro-preview', # Şu an erişebileceğin en güçlü model
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(
-                    google_search=types.GoogleSearch() # Google Arama Aracı
-                )]
-            )
+   try:
+        # --- GÖREVİ BAŞLAT (Asenkron) ---
+        interaction = client.interactions.create(
+            input=prompt,
+            agent='deep-research-pro-preview-12-2025', # En güncel ajan
+            background=True
         )
         
-        # Yanıtın içinden metni alıyoruz
-        return response.text
+        print(f"Araştırma Kimliği: {interaction.id}")
         
+        # --- SONUÇ BEKLEME DÖNGÜSÜ ---
+        # Ajan araştırma yaparken biz burada bekliyoruz
+        while True:
+            # Durumu kontrol et
+            check_interaction = client.interactions.get(name=interaction.name)
+            
+            if check_interaction.status == "completed":
+                print("✅ Araştırma başarıyla tamamlandı!")
+                # En son çıktıyı alıyoruz
+                return check_interaction.outputs[-1].text
+                
+            elif check_interaction.status == "failed":
+                return f"❌ Araştırma hatası oluştu: {check_interaction.error}"
+            
+            else:
+                print("⏳ Ajan çalışıyor... (Haberleri ve verileri okuyor...)")
+                time.sleep(15) # 15 saniyede bir kontrol et
+                
     except Exception as e:
-        return f"Analiz hatası: {str(e)}"
+        return f"Sistem hatası: {str(e)}"
 
 def telegrama_gonder(mesaj):
-    # Mesajı Telegram'a gönder
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     
-    # Çok uzun mesajları bölmek gerekebilir ama şimdilik tek parça deneyelim
-    if len(mesaj) > 4000:
-        mesaj = mesaj[:4000] + "...(devamı kesildi)"
+    # Mesaj çok uzunsa 4000 karakterde bölüyoruz
+    limit = 4000
+    parcalar = [mesaj[i:i+limit] for i in range(0, len(mesaj), limit)]
 
-    payload = {
-        'chat_id': TELEGRAM_CHAT_ID,
-        'text': f"🚀 **SWING TRADE RAPORU**\n📅 {bugun}\n\n{mesaj}",
-        # Markdown kullanmıyoruz çünkü finansal semboller (*, _) bazen hata verdiriyor
-    }
-    requests.post(url, data=payload)
+    for parca in parcalar:
+        payload = {
+            'chat_id': TELEGRAM_CHAT_ID,
+            'text': f"🚀 **DERİN SWING ANALİZİ**\n📅 {bugun}\n\n{parca}",
+            # Markdown kapalı çünkü finansal semboller hata verebiliyor
+        }
+        requests.post(url, data=payload)
+        time.sleep(1) # Mesajlar arası bekleme
 
 if __name__ == "__main__":
     rapor = piyasa_analizi_yap()
     if rapor:
         telegrama_gonder(rapor)
-        print("Rapor başarıyla gönderildi.")
+        print("Rapor gönderildi.")
     else:
         print("Rapor oluşturulamadı.")
