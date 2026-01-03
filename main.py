@@ -1,8 +1,8 @@
 import os
 import requests
 import datetime
-import time
 from google import genai
+from google.genai import types
 
 # --- AYARLAR ---
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
@@ -10,13 +10,11 @@ TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
 bugun = datetime.date.today().strftime("%d %B %Y")
-
-# Client Tanımlaması
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 def piyasa_analizi_yap():
-    # SafeBlade Stratejisi için Özel Prompt
-    prompt = f"""
+    # SafeBlade Stratejisi
+   prompt = f"""
     GÖREV: Sen benim 'Algoritmik Ön Tarama Asistanımsın'. Tarih: {bugun}.
     
     STRATEJİM (SafeBlade): Ben sadece "Yükseliş Trendindeki Düzeltmeleri" (Trend Pullback) satın alırım.
@@ -47,54 +45,59 @@ def piyasa_analizi_yap():
     Yanıtı Türkçe, kısa, öz ve tamamen teknik odaklı ver.
     """
     
-    print("🧠 Deep Research Agent başlatılıyor (Bu işlem birkaç dakika sürebilir)...")
+    print("Gemini 3 Pro (Thinking Mode + Search) piyasayı analiz ediyor...")
     
     try:
-        # --- GÖREVİ BAŞLAT (Asenkron) ---
-        interaction = client.interactions.create(
-            input=prompt,
-            agent='deep-research-pro-preview-12-2025', # En güncel ajan
-            background=True
+        response = client.models.generate_content(
+            model='gemini-3-pro-preview', #
+            contents=prompt,
+            config=types.GenerateContentConfig(
+                # --- THINKING AYARLARI ---
+                # Modelin cevap vermeden önce derinlemesine düşünmesini sağlar
+                # 'thinking_level="high"' en detaylı mantık yürütmeyi açar.
+                thinking_config=types.ThinkingConfig(thinking_level="high"), #
+                
+                # --- GOOGLE ARAMA ---
+                # Thinking moduyla beraber arama aracını da kullanıyoruz
+                tools=[types.Tool(
+                    google_search=types.GoogleSearch()
+                )],
+                response_mime_type="text/plain"
+            )
         )
         
-        print(f"Araştırma Kimliği: {interaction.id}")
+        # Thinking modelleri bazen düşüncelerini de yazar, biz final cevabı alalım.
+        return response.text
         
-        # --- SONUÇ BEKLEME DÖNGÜSÜ ---
-        # Ajan araştırma yaparken biz burada bekliyoruz
-        while True:
-            # Durumu kontrol et
-            check_interaction = client.interactions.get(name=interaction.name)
-            
-            if check_interaction.status == "completed":
-                print("✅ Araştırma başarıyla tamamlandı!")
-                # En son çıktıyı alıyoruz
-                return check_interaction.outputs[-1].text
-                
-            elif check_interaction.status == "failed":
-                return f"❌ Araştırma hatası oluştu: {check_interaction.error}"
-            
-            else:
-                print("⏳ Ajan çalışıyor... (Haberleri ve verileri okuyor...)")
-                time.sleep(15) # 15 saniyede bir kontrol et
-                
     except Exception as e:
-        return f"Sistem hatası: {str(e)}"
+        # Eğer 'thinking_level' henüz hesabınızda aktif değilse veya model hata verirse
+        # otomatik olarak standart modele (1.5 Pro) düşen yedek sistem:
+        print(f"Thinking model hatası: {e}. Standart modele geçiliyor...")
+        try:
+            fallback_response = client.models.generate_content(
+                model='gemini-1.5-pro',
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())]
+                )
+            )
+            return fallback_response.text
+        except Exception as e2:
+            return f"Kritik Hata: {str(e2)}"
 
 def telegrama_gonder(mesaj):
     url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
     
-    # Mesaj çok uzunsa 4000 karakterde bölüyoruz
+    # Mesaj çok uzunsa böl (Thinking modelleri uzun yazar)
     limit = 4000
     parcalar = [mesaj[i:i+limit] for i in range(0, len(mesaj), limit)]
 
     for parca in parcalar:
         payload = {
             'chat_id': TELEGRAM_CHAT_ID,
-            'text': f"🚀 **DERİN SWING ANALİZİ**\n📅 {bugun}\n\n{parca}",
-            # Markdown kapalı çünkü finansal semboller hata verebiliyor
+            'text': f"🧠 **SAFEBLADE AI (THINKING)**\n📅 {bugun}\n\n{parca}",
         }
         requests.post(url, data=payload)
-        time.sleep(1) # Mesajlar arası bekleme
 
 if __name__ == "__main__":
     rapor = piyasa_analizi_yap()
