@@ -17,40 +17,34 @@ client = genai.Client(api_key=GEMINI_API_KEY)
 
 def piyasa_analizi_yap():
     prompt = f"""
-    GÖREV: Sen, 20 yıllık deneyime sahip, teknik analiz ve piyasa psikolojisi uzmanı kıdemli bir 'Swing Trader'sın.
-    Tarih: {bugun}.
+    GÖREV: Sen benim 'Algoritmik Ön Tarama Asistanımsın'. Tarih: {bugun}.
     
-    AMAÇ: Google Arama özelliğini kullanarak güncel verileri tara ve bana net, kararsızlık içermeyen, işleme girilebilir bir ticaret planı hazırla.
+    STRATEJİM (SafeBlade): Ben sadece "Yükseliş Trendindeki Düzeltmeleri" (Trend Pullback) satın alırım.
+    Bana rastgele hisse önerme, sadece aşağıdaki TEKNİK KRİTERLERE uyan varlıkları Google'da tara ve bul.
     
-    ANALİZ KURALLARI:
-    - VADE: Analizlerini 'Günlük (D1)' ve '4 Saatlik (H4)' grafiklerin trendine göre yap.
-    - İNDİKATÖRLER: RSI (Uyumsuzluk var mı?), MACD (Kesişim var mı?), EMA (20, 50 ve 200 günlük ortalamalara göre fiyat nerede?).
+    ARAMA FİLTRELERİ (Buna uymayanı getirme):
+    1. 📈 ANA TREND (EMA 50): Fiyat kesinlikle 50 Günlük Hareketli Ortalamanın (EMA 50) ÜZERİNDE olmalı. (Trend Yukarı).
+    2. 🧲 DÜZELTME (PULLBACK - EMA 20): Fiyat son 1-2 gün içinde kısa vadeli ortalamasına (EMA 20) geri çekilmiş veya temas etmiş olmalı. (Fiyatın EMA 20'den çok uzaklaştığı "uçmuş" hisseleri istemiyorum).
+    3. 📊 MOMENTUM (RSI): RSI değeri 35 ile 65 arasında olmalı. (Ne aşırı satımda ölü, ne de aşırı alımda şişmiş olacak).
+    4. ⚠️ HACİM: Düşüşler hacimsiz, yükselişler hacimli olmalı.
     
-    RAPOR FORMATI (Aynen bu başlıkları kullan):
+    İSTENEN RAPOR FORMATI:
     
-    1. 🌍 PİYASA MODU & GENEL BAKIŞ
-       - Piyasa şu an "Risk İştahı Açık" mı yoksa "Güvenli Liman (Risk Off)" modunda mı?
-       - Bugün takip edilmesi gereken kritik ekonomik veri var mı? (Fed konuşması, TÜFE, İşsizlik vb.)
+    1. 🌍 PİYASA GENELİ & VIX
+       - Endeksler (NASDAQ/SPX) EMA 50 üstünde mi? (Stratejim sadece piyasa iyiyken çalışır).
     
-    2. 📉 ENDEKS VE EMTIA ANALİZİ (NASDAQ & ALTIN)
-       - NASDAQ 100: Trend yönü ne? Kritik Destek ve Direnç seviyeleri rakamsal olarak neresi? (Örn: 18.500 altı stop).
-       - ONS ALTIN (XAU/USD): Düzeltme mi yapıyor yoksa yükseliş trendinde mi? Alım bölgesinde miyiz?
+    2. 🎯 SAFEBLADE ADAY LİSTESİ (En az 3 Aday)
+       - NASDAQ, Kripto veya Emtia piyasalarından yukarıdaki kriterlere en çok uyan 3 varlığı listele.
+       - Format:
+         * Varlık: [Kod]
+         * Mevcut Durum: [Örn: EMA 50 üstünde, EMA 20'ye dokundu]
+         * RSI Tahmini: [Örn: Nötr, 55 civarı]
+         * Neden Uygun: [Haber/Temel neden]
     
-    3. 🎯 GÜNÜN FIRSATLARI (TOP 3 SWING TRADE)
-       - Hacim artışı olan, teknik kırılım yapan veya destekte olan 3 adet hisse (ABD Borsaları) veya Kripto/Emtia bul.
-       - Her biri için şu formatı kullan:
-         * Varlık: [Hisse Kodu]
-         * Yön: [AL / SAT]
-         * Neden: [Teknik gerekçe, örn: "RSI Pozitif Uyumsuzluk + 50 EMA desteği"]
-         * Giriş Bölgesi: [Fiyat Aralığı]
-         * Hedef (TP): [Fiyat]
-         * Zarar Kes (SL): [Fiyat]
+    3. 🚫 UZAK DURULACAKLAR
+       - Bugün çok popüler olsa bile "RSI değeri 70'in üzerine çıkmış" (aşırı şişmiş) 2 varlığı yaz ki yanlışlıkla girmeyeyim.
     
-    4. 🧠 STRATEJİ VE SONUÇ
-       - Nakitte mi beklemeliyim (% kaç?), yoksa oyuna girmeli miyim?
-       - Tek cümlelik günün mottosu.
-    
-    Yanıtı Türkçe ver. Finansal terimleri (Bullish, Bearish, Breakout) parantez içinde Türkçe açıklamasıyla kullanabilirsin. Cok fazla emoji kullanma okunabilirliği bozma.
+    Yanıtı Türkçe, kısa, öz ve tamamen teknik odaklı ver.
     """
     
     try:
