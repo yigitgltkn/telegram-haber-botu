@@ -1,21 +1,21 @@
 import os
 import requests
 import datetime
+import time
 from google import genai
-from google.genai import types
 
 # --- AYARLAR ---
 GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
 TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 
-# Tarih (Analiz güncelliği için)
 bugun = datetime.date.today().strftime("%d %B %Y")
 
-# --- YENİ NESİL CLIENT TANIMLAMASI ---
+# Client Tanımlaması
 client = genai.Client(api_key=GEMINI_API_KEY)
 
 def piyasa_analizi_yap():
+    # SafeBlade Stratejisi için Özel Prompt
     prompt = f"""
     GÖREV: Sen benim 'Algoritmik Ön Tarama Asistanımsın'. Tarih: {bugun}.
     
@@ -47,7 +47,9 @@ def piyasa_analizi_yap():
     Yanıtı Türkçe, kısa, öz ve tamamen teknik odaklı ver.
     """
     
-   try:
+    print("🧠 Deep Research Agent başlatılıyor (Bu işlem birkaç dakika sürebilir)...")
+    
+    try:
         # --- GÖREVİ BAŞLAT (Asenkron) ---
         interaction = client.interactions.create(
             input=prompt,
