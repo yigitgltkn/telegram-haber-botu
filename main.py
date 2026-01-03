@@ -11,8 +11,9 @@ TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
 genai.configure(api_key=GEMINI_API_KEY)
 
 # Model ismini guncelledik
+# --- GEMINI 1.5 PRO (Kararlı ve Çok Zeki) ---
 model = genai.GenerativeModel(
-    'gemini-1.5-flash-001',
+    'gemini-1.5-pro', 
     tools='google_search_retrieval'
 )
 
