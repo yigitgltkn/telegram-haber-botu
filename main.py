@@ -19,35 +19,25 @@ saat = simdi.hour
 def piyasa_analizi_yap():
     # --- SAFEBLADE STRATEJİSİ ---
     prompt = f"""
-    GÖREV: Sen benim 'Algoritmik Ön Tarama Asistanımsın'. Tarih: {bugun}.
-    
-    STRATEJİM (SafeBlade): Ben sadece "Yükseliş Trendindeki Düzeltmeleri" (Trend Pullback) satın alırım.
-    Bana rastgele hisse önerme, sadece aşağıdaki TEKNİK KRİTERLERE uyan varlıkları Google'da tara ve bul.
-    
+        GÖREV: SafeBlade stratejime uygun hisseleri bulmak için Google'da 'Derinlemesine Canlı Arama' yap.
+        
+        ÖNEMLİ KURAL: Asla kendi hafızandaki eski veriyi kullanma. Mutlaka "Technical Analysis {bugun_kisa}" veya "Live RSI levels today" sorgularını çalıştır.
+        
     ARAMA FİLTRELERİ (Buna uymayanı getirme):
     1. 📈 ANA TREND (EMA 50): Fiyat kesinlikle 50 Günlük Hareketli Ortalamanın (EMA 50) ÜZERİNDE olmalı. (Trend Yukarı).
     2. 🧲 DÜZELTME (PULLBACK - EMA 20): Fiyat son 1-2 gün içinde kısa vadeli ortalamasına (EMA 20) geri çekilmiş veya temas etmiş olmalı. (Fiyatın EMA 20'den çok uzaklaştığı "uçmuş" hisseleri istemiyorum).
     3. 📊 MOMENTUM (RSI): RSI değeri 35 ile 65 arasında olmalı. (Ne aşırı satımda ölü, ne de aşırı alımda şişmiş olacak).
     4. ⚠️ HACİM: Düşüşler hacimsiz, yükselişler hacimli olmalı.
-    
-    İSTENEN RAPOR FORMATI:
-    
-    1. 🌍 PİYASA GENELİ & VIX
-       - Endeksler (NASDAQ/SPX) EMA 50 üstünde mi? (Stratejim sadece piyasa iyiyken çalışır).
-    
-    2. 🎯 SAFEBLADE ADAY LİSTESİ (En az 3 Aday)
-       - NASDAQ, Kripto veya Emtia piyasalarından yukarıdaki kriterlere en çok uyan 3 varlığı listele.
-       - Format:
-         * Varlık: [Kod]
-         * Mevcut Durum: [Örn: EMA 50 üstünde, EMA 20'ye dokundu]
-         * RSI Tahmini: [Örn: Nötr, 55 civarı]
-         * Neden Uygun: [Haber/Temel neden]
-    
-    3. 🚫 UZAK DURULACAKLAR
-       - Bugün çok popüler olsa bile "RSI değeri 70'in üzerine çıkmış" (aşırı şişmiş) 2 varlığı yaz ki yanlışlıkla girmeyeyim.
-    
-    Yanıtı Türkçe, kısa, öz ve tamamen teknik odaklı ver.
-    """
+        
+        ARAŞTIRMA ADIMLARI (Bunu uygula):
+        1. Önce "Nasdaq 100 technical analysis {bugun_kisa}" araması yapıp genel trendi teyit et.
+        2. Sonra "Best swing trade stocks pullback strategy {bugun_kisa}" veya "Stocks near EMA 20 support today" araması yap.
+        3. Bulduğun hisselerin verilerini "Investing.com" veya "TradingView" kaynaklı güncel verilerle doğrula.
+        
+        RAPOR ÇIKTISI:
+        - Eğer verisi bugüne ({bugun_tarih}) ait olmayan bir hisse bulursan listeye ekleme.
+        - 3 adet aday hisse ve nedenleri (RSI ve EMA değerleriyle).
+        """
     
     print("Gemini 3.0 Pro (Varsayılan Thinking: HIGH + Search) çalışıyor...")
     
