@@ -1,29 +1,30 @@
-name: Gunluk Haber Botu
+name: SafeBlade Trader Bot
 
 on:
   schedule:
-    - cron: '0 6 * * *' # Her sabah TR saatiyle 09:00
+    # UTC 20:00 = TR Saati 23:00 (Yaz/Kış saatine göre 1 saat oynayabilir ama kapanışa yakındır)
+    - cron: '0 20 * * 1-5' # Pazartesi-Cuma arası
   workflow_dispatch: # Manuel çalıştırma butonu
 
 jobs:
-  calistir:
+  build:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Depoyu Çek
-        uses: actions/checkout@v3
-
-      - name: Python Kur
-        uses: actions/setup-python@v4
-        with:
-          python-version: '3.9'
-
-      - name: Kütüphaneleri Yükle
-        run: pip install -r requirements.txt
-
-      - name: Botu Çalıştır
-        env:
-          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
-          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
-          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-        run: python main.py
+    - uses: actions/checkout@v3
+    
+    - name: Python Kur
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+        
+    - name: Kütüphaneleri Yükle
+      run: |
+        pip install -r requirements.txt
+        
+    - name: Botu Başlat
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: python main.py
