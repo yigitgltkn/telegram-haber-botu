@@ -3,5 +3,5 @@ requests
 pytz
 yfinance
 pandas
-pandas_ta
-numpy
+pandas-ta
+numpy<2.0.0
