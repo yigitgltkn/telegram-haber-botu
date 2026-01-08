@@ -13,12 +13,34 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# SafeBlade Takip Listesi
+# SafeBlade Genişletilmiş Profesyonel Takip Listesi
 HISSE_LISTESI = [
-    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AMD", 
-    "NFLX", "INTC", "CSCO", "PEP", "AVGO", "TXN", "QCOM", "ADBE", 
-    "PYPL", "AMAT", "SBUX", "MDLZ", "MRNA", "BKNG", "ADP", "GILD",
-    "COST", "TMUS", "CMCSA", "AZPN", "ZS", "CRWD", "PANW", "FTNT"
+    # --- MUHTEŞEM 7'Lİ (Piyasanın Motoru) ---
+    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA",
+
+    # --- YARI İLETKEN & ÇİP (En Hızlı Sektör) ---
+    "AMD", "AVGO", "QCOM", "INTC", "TXN", "MU", "LRCX", "KLAC", "MRVL", "ARM", "TSM", "SMCI",
+
+    # --- YAZILIM & SAAS (Yüksek Büyüme) ---
+    "ADBE", "CRM", "ORCL", "NOW", "SNOW", "DDOG", "PLTR", "MDB", "TEAM", "HUBS",
+
+    # --- SİBER GÜVENLİK (Trendleri Çok Temizdir) ---
+    "PANW", "CRWD", "FTNT", "ZS", "NET", "CYBR",
+
+    # --- FINTECH & KRİPTO BAĞLANTILI (Volatilite Kralı) ---
+    "PYPL", "SQ", "COIN", "HOOD", "MSTR", "AFRM", "V", "MA",
+
+    # --- MODERN TÜKETİCİ & HİZMET ---
+    "NFLX", "ABNB", "UBER", "DASH", "BKNG", "SBUX", "CMG", "LULU", "NKE",
+
+    # --- BIOTECH & SAĞLIK (Patlayıcı Güç) ---
+    "MRNA", "GILD", "VRTX", "REGN", "ISRG", "AMGN",
+
+    # --- DİĞER TEKNOLOJİ & DONANIM ---
+    "CSCO", "IBM", "DELL", "HPQ", "ANET",
+
+    # --- PERAKENDE & GIDA (Defansif Ama Güçlü) ---
+    "PEP", "COST", "WMT", "TGT", "MDLZ"
 ]
 
 client = genai.Client(api_key=GEMINI_API_KEY)
