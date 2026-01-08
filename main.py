@@ -2,83 +2,115 @@ import os
 import requests
 import datetime
 import pytz
+import yfinance as yf
+import pandas_ta as ta
 from google import genai
 from google.genai import types
 
 # --- AYARLAR ---
-GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
-TELEGRAM_BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
-TELEGRAM_CHAT_ID = os.environ["TELEGRAM_CHAT_ID"]
+GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
+TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
+TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# Saat ayarları (Veri güncelliğini kontrol etmek için)
-tr_timezone = pytz.timezone('Europe/Istanbul')
-simdi = datetime.datetime.now(tr_timezone)
-bugun_tarih = simdi.strftime("%d %B %Y")
-bugun_kisa = simdi.strftime("%Y-%m-%d")
+# SafeBlade Stratejisi için Seçilmiş Nasdaq Hisseleri
+HISSE_LISTESI = [
+    "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AMD", 
+    "NFLX", "INTC", "CSCO", "PEP", "AVGO", "TXN", "QCOM", "ADBE", 
+    "PYPL", "AMAT", "SBUX", "MDLZ", "MRNA", "BKNG", "ADP", "GILD",
+    "COST", "TMUS", "CMCSA", "AZPN", "ZS", "CRWD", "PANW", "FTNT"
+]
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
-def piyasa_analizi_yap():
-    # --- SAFEBLADE STRATEJİSİ ---
+def telegrama_gonder(mesaj):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
+        print("Telegram ayarları eksik.")
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
+    limit = 4000
+    parcalar = [mesaj[i:i+limit] for i in range(0, len(mesaj), limit)]
+    for parca in parcalar:
+        payload = {'chat_id': TELEGRAM_CHAT_ID, 'text': parca, 'parse_mode': 'Markdown'}
+        requests.post(url, data=payload)
+
+def teknik_tarama():
+    print("🔍 Matematiksel tarama başlıyor...")
+    adaylar = []
+    
+    for symbol in HISSE_LISTESI:
+        try:
+            # Son 6 ayın verisini çek
+            df = yf.download(symbol, period="6mo", interval="1d", progress=False)
+            if len(df) < 50: continue
+
+            # İndikatörler
+            df['EMA_50'] = ta.ema(df['Close'], length=50)
+            df['EMA_20'] = ta.ema(df['Close'], length=20)
+            df['RSI'] = ta.rsi(df['Close'], length=14)
+
+            son = df.iloc[-1]
+            fiyat = float(son['Close'])
+            ema50 = float(son['EMA_50'])
+            ema20 = float(son['EMA_20'])
+            rsi = float(son['RSI'])
+
+            # STRATEJİ: SafeBlade
+            # 1. Trend Yukarı (Fiyat > EMA50)
+            # 2. Düzeltme (Fiyat EMA20'ye yakın - %3 tolerans)
+            # 3. Güç (RSI 35 ile 65 arası)
+            
+            if (fiyat > ema50) and (ema20 * 0.97 <= fiyat <= ema20 * 1.03) and (35 < rsi < 65):
+                bilgi = f"🔹 {symbol} | Fiyat: {fiyat:.2f} | EMA20: {ema20:.2f} | RSI: {rsi:.1f}"
+                adaylar.append(bilgi)
+                print(bilgi)
+        except Exception as e:
+            continue
+            
+    return adaylar
+
+def gemini_analizi(adaylar):
+    if not adaylar:
+        return "📉 Bugün SafeBlade stratejisine uyan hisse çıkmadı. Nakitte beklemeye devam."
+    
+    hisseler_str = "\n".join(adaylar)
+    tarih = datetime.datetime.now(pytz.timezone('Europe/Istanbul')).strftime("%d %B %Y")
+    
     prompt = f"""
-    GÖREV: SafeBlade stratejime uygun hisseleri bulmak için Google'da 'Derinlemesine Canlı Arama' yap.
-    TARİH: {bugun_tarih}
+    TARİH: {tarih}
+    GÖREV: Aşağıdaki hisseler teknik olarak ALIM bölgesinde (Trend yukarı, EMA20 desteğinde).
+    Ancak temel riskleri kontrol etmem lazım.
     
-    ÖNEMLİ KURAL: Asla kendi hafızandaki eski veriyi kullanma. Mutlaka "Technical Analysis {bugun_kisa}" veya "Live RSI levels today" sorgularını çalıştır.
+    HİSSELER:
+    {hisseler_str}
     
-    ARAMA FİLTRELERİ (Buna uymayanı getirme):
-    1. 📈 ANA TREND (EMA 50): Fiyat kesinlikle 50 Günlük Hareketli Ortalamanın (EMA 50) ÜZERİNDE olmalı. (Trend Yukarı).
-    2. 🧲 DÜZELTME (PULLBACK - EMA 20): Fiyat son 1-2 gün içinde kısa vadeli ortalamasına (EMA 20) geri çekilmiş veya temas etmiş olmalı. (Fiyatın EMA 20'den çok uzaklaştığı "uçmuş" hisseleri istemiyorum).
-    3. 📊 MOMENTUM (RSI): RSI değeri 35 ile 65 arasında olmalı. (Ne aşırı satımda ölü, ne de aşırı alımda şişmiş olacak).
-    4. ⚠️ HACİM: Düşüşler hacimsiz, yükselişler hacimli olmalı.
+    YAPMAN GEREKEN:
+    Google Aramayı kullanarak bu hisseler için "son dakika haberi", "bilanço tarihi" ve "analist notu" araması yap.
     
-    ARAŞTIRMA ADIMLARI (Bunu uygula):
-    1. Önce "Nasdaq 100 technical analysis {bugun_kisa}" araması yapıp genel trendi teyit et.
-    2. Sonra "Best swing trade stocks pullback strategy {bugun_kisa}" veya "Stocks near EMA 20 support today" araması yap.
-    3. Bulduğun hisselerin verilerini "Investing.com" veya "TradingView" kaynaklı güncel verilerle doğrula.
+    ÇIKTI (Telegram mesajı formatında):
+    🦁 **SAFEBLADE GÜNLÜK RAPOR**
     
-    RAPOR ÇIKTISI:
-    - Eğer verisi bugüne ({bugun_tarih}) ait olmayan bir hisse bulursan listeye ekleme.
-    - 3 adet aday hisse ve nedenleri (RSI ve EMA değerleriyle).
-    - Yanıtı Türkçe, emojili ve kısa maddeler halinde ver.
+    (Her hisse için):
+    ✅ **Hisse Kodu**
+    * 📊 **Teknik:** EMA20 desteğinde, trend pozitif.
+    * 📰 **Haber/Risk:** (Varsa kötü haber, yoksa "Temiz")
+    * 🗓 **Bilanço:** (Yakın zamanda bilanço var mı?)
+    * 🎯 **Karar:** "ALINABİLİR" veya "RİSKLİ/BEKLE"
     """
-    
-    print("Gemini 3.0 Pro (Thinking: HIGH + Search) çalışıyor...")
     
     try:
         response = client.models.generate_content(
             model='gemini-3-pro-preview',
             contents=prompt,
             config=types.GenerateContentConfig(
-                # Model varsayılan olarak High Thinking modundadır.
-                tools=[types.Tool(
-                    google_search=types.GoogleSearch()
-                )],
+                tools=[types.Tool(google_search=types.GoogleSearch())],
                 response_mime_type="text/plain"
             )
         )
         return response.text
-        
     except Exception as e:
-        return f"❌ Hata: {str(e)}"
-
-def telegrama_gonder(mesaj):
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    
-    limit = 4000
-    parcalar = [mesaj[i:i+limit] for i in range(0, len(mesaj), limit)]
-
-    for parca in parcalar:
-        payload = {
-            'chat_id': TELEGRAM_CHAT_ID,
-            'text': f"🧠 **SAFEBLADE AI**\n📅 {bugun_tarih}\n\n{parca}",
-        }
-        requests.post(url, data=payload)
+        return f"AI Hatası: {e}"
 
 if __name__ == "__main__":
-    rapor = piyasa_analizi_yap()
-    if rapor:
-        telegrama_gonder(rapor)
-        print("Rapor gönderildi.")
-    else:
-        print("Rapor oluşturulamadı.")
+    bulunanlar = teknik_tarama()
+    rapor = gemini_analizi(bulunanlar)
+    telegrama_gonder(rapor)
