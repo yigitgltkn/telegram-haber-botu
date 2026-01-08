@@ -2,9 +2,8 @@ name: SafeBlade Trader Bot
 
 on:
   schedule:
-    # Hafta içi her gün TR saatiyle 23:00'da çalışır
-    - cron: '0 20 * * 1-5'
-  workflow_dispatch: # Manuel buton
+    - cron: '0 20 * * 1-5' # TR saatiyle 23:00
+  workflow_dispatch:
 
 jobs:
   build:
@@ -13,10 +12,10 @@ jobs:
     steps:
     - uses: actions/checkout@v3
     
-    - name: Python 3.11 Kur
+    - name: Python 3.12 Kurulumu
       uses: actions/setup-python@v4
       with:
-        python-version: '3.11'  # BURAYI GÜNCELLEDİK
+        python-version: '3.12'  # <-- BURAYI GÜNCELLEDİK
         
     - name: Kütüphaneleri Yükle
       run: |
