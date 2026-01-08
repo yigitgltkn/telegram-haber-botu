@@ -4,7 +4,7 @@ import datetime
 import pytz
 import yfinance as yf
 import pandas as pd
-import ta  # Yeni kütüphanemiz
+import ta
 from google import genai
 from google.genai import types
 
@@ -35,45 +35,60 @@ def telegrama_gonder(mesaj):
         requests.post(url, data=payload)
 
 def teknik_tarama():
-    print("🔍 Matematiksel tarama başlıyor (ta kütüphanesi ile)...")
+    print("\n" + "="*50)
+    print("🔍 DETAYLI VERİ DÖKÜMÜ (TEYİT EKRANI)")
+    print("="*50)
+    print(f"{'HİSSE':<6} | {'TARİH':<10} | {'FİYAT':<8} | {'EMA20':<8} | {'EMA50':<8} | {'RSI':<6} | DURUM")
+    print("-" * 85)
+    
     adaylar = []
     
     for symbol in HISSE_LISTESI:
         try:
-            # Veri çekme
+            # Veri çekme (Son 6 ay)
             df = yf.download(symbol, period="6mo", interval="1d", progress=False)
             if len(df) < 50: continue
             
-            # Veriyi düzeltme (Multi-index sorunu için)
+            # Multi-index düzeltmesi
             if isinstance(df.columns, pd.MultiIndex):
                 df.columns = df.columns.get_level_values(0)
 
-            # --- YENİ HESAPLAMA MOTORU (ta) ---
-            # EMA Hesaplamaları
+            # --- HESAPLAMALAR ---
             df['EMA_50'] = ta.trend.ema_indicator(close=df['Close'], window=50)
             df['EMA_20'] = ta.trend.ema_indicator(close=df['Close'], window=20)
-            # RSI Hesaplaması
             df['RSI'] = ta.momentum.rsi(close=df['Close'], window=14)
 
+            # Son satırı al
             son = df.iloc[-1]
+            
+            # --- VERİ TEYİDİ İÇİN TARİH ALMA ---
+            # Pandas timestamp'i string'e çeviriyoruz
+            veri_tarihi = son.name.strftime('%Y-%m-%d')
+            
             fiyat = float(son['Close'])
             ema50 = float(son['EMA_50'])
             ema20 = float(son['EMA_20'])
             rsi = float(son['RSI'])
 
-            # STRATEJİ: SafeBlade
-            # 1. Trend Yukarı (Fiyat > EMA50)
-            # 2. Pullback (Fiyat EMA20'ye değdi veya çok yakın)
-            # 3. Momentum (RSI 35-65)
+            # STRATEJİ KONTROLÜ
+            trend_yukari = fiyat > ema50
+            pullback = (ema20 * 0.97) <= fiyat <= (ema20 * 1.03)
+            rsi_uygun = 35 < rsi < 65
             
-            if (fiyat > ema50) and (ema20 * 0.97 <= fiyat <= ema20 * 1.03) and (35 < rsi < 65):
-                bilgi = f"🔹 {symbol} | Fiyat: {fiyat:.2f} | EMA20: {ema20:.2f} | RSI: {rsi:.1f}"
+            durum_mesaji = "❌"
+            if trend_yukari and pullback and rsi_uygun:
+                durum_mesaji = "✅ Aday"
+                bilgi = f"🔹 {symbol} ({veri_tarihi}) | Fiyat: {fiyat:.2f} | EMA20: {ema20:.2f}"
                 adaylar.append(bilgi)
-                print(bilgi)
+            
+            # --- LOG EKRANINA BAS (BURASI SENİN İÇİN) ---
+            print(f"{symbol:<6} | {veri_tarihi:<10} | {fiyat:<8.2f} | {ema20:<8.2f} | {ema50:<8.2f} | {rsi:<6.1f} | {durum_mesaji}")
+
         except Exception as e:
-            print(f"Hata ({symbol}): {e}")
+            print(f"{symbol:<6} | HATA: {str(e)}")
             continue
             
+    print("="*50 + "\n")
     return adaylar
 
 def gemini_analizi(adaylar):
@@ -85,8 +100,7 @@ def gemini_analizi(adaylar):
     
     prompt = f"""
     TARİH: {tarih}
-    GÖREV: Aşağıdaki hisseler teknik olarak ALIM bölgesinde. Temel risk kontrolü yap.
-    
+    GÖREV: Aşağıdaki hisseler teknik olarak ALIM bölgesinde.
     HİSSELER:
     {hisseler_str}
     
@@ -119,5 +133,9 @@ def gemini_analizi(adaylar):
 
 if __name__ == "__main__":
     bulunanlar = teknik_tarama()
-    rapor = gemini_analizi(bulunanlar)
-    telegrama_gonder(rapor)
+    # Eğer aday varsa Gemini'ye gönder, yoksa boşuna AI kotası harcama
+    if bulunanlar:
+        rapor = gemini_analizi(bulunanlar)
+        telegrama_gonder(rapor)
+    else:
+        print("Hiçbir hisse kriterlere uymadı.")
