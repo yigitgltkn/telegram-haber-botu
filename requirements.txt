@@ -1,3 +1,7 @@
 google-genai
 requests
 pytz
+yfinance
+pandas
+pandas_ta
+numpy
