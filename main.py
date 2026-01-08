@@ -3,7 +3,8 @@ import requests
 import datetime
 import pytz
 import yfinance as yf
-import pandas_ta as ta
+import pandas as pd
+import ta  # Yeni kütüphanemiz
 from google import genai
 from google.genai import types
 
@@ -12,7 +13,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# SafeBlade Stratejisi için Seçilmiş Nasdaq Hisseleri
+# SafeBlade Takip Listesi
 HISSE_LISTESI = [
     "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AMD", 
     "NFLX", "INTC", "CSCO", "PEP", "AVGO", "TXN", "QCOM", "ADBE", 
@@ -34,19 +35,25 @@ def telegrama_gonder(mesaj):
         requests.post(url, data=payload)
 
 def teknik_tarama():
-    print("🔍 Matematiksel tarama başlıyor...")
+    print("🔍 Matematiksel tarama başlıyor (ta kütüphanesi ile)...")
     adaylar = []
     
     for symbol in HISSE_LISTESI:
         try:
-            # Son 6 ayın verisini çek
+            # Veri çekme
             df = yf.download(symbol, period="6mo", interval="1d", progress=False)
             if len(df) < 50: continue
+            
+            # Veriyi düzeltme (Multi-index sorunu için)
+            if isinstance(df.columns, pd.MultiIndex):
+                df.columns = df.columns.get_level_values(0)
 
-            # İndikatörler
-            df['EMA_50'] = ta.ema(df['Close'], length=50)
-            df['EMA_20'] = ta.ema(df['Close'], length=20)
-            df['RSI'] = ta.rsi(df['Close'], length=14)
+            # --- YENİ HESAPLAMA MOTORU (ta) ---
+            # EMA Hesaplamaları
+            df['EMA_50'] = ta.trend.ema_indicator(close=df['Close'], window=50)
+            df['EMA_20'] = ta.trend.ema_indicator(close=df['Close'], window=20)
+            # RSI Hesaplaması
+            df['RSI'] = ta.momentum.rsi(close=df['Close'], window=14)
 
             son = df.iloc[-1]
             fiyat = float(son['Close'])
@@ -56,14 +63,15 @@ def teknik_tarama():
 
             # STRATEJİ: SafeBlade
             # 1. Trend Yukarı (Fiyat > EMA50)
-            # 2. Düzeltme (Fiyat EMA20'ye yakın - %3 tolerans)
-            # 3. Güç (RSI 35 ile 65 arası)
+            # 2. Pullback (Fiyat EMA20'ye değdi veya çok yakın)
+            # 3. Momentum (RSI 35-65)
             
             if (fiyat > ema50) and (ema20 * 0.97 <= fiyat <= ema20 * 1.03) and (35 < rsi < 65):
                 bilgi = f"🔹 {symbol} | Fiyat: {fiyat:.2f} | EMA20: {ema20:.2f} | RSI: {rsi:.1f}"
                 adaylar.append(bilgi)
                 print(bilgi)
         except Exception as e:
+            print(f"Hata ({symbol}): {e}")
             continue
             
     return adaylar
@@ -77,24 +85,23 @@ def gemini_analizi(adaylar):
     
     prompt = f"""
     TARİH: {tarih}
-    GÖREV: Aşağıdaki hisseler teknik olarak ALIM bölgesinde (Trend yukarı, EMA20 desteğinde).
-    Ancak temel riskleri kontrol etmem lazım.
+    GÖREV: Aşağıdaki hisseler teknik olarak ALIM bölgesinde. Temel risk kontrolü yap.
     
     HİSSELER:
     {hisseler_str}
     
     YAPMAN GEREKEN:
-    Google Aramayı kullanarak bu hisseler için "son dakika haberi", "bilanço tarihi" ve "analist notu" araması yap.
+    Google Aramayı kullanarak:
+    1. Kötü haber var mı?
+    2. Bilanço tarihi yakın mı?
     
-    ÇIKTI (Telegram mesajı formatında):
-    🦁 **SAFEBLADE GÜNLÜK RAPOR**
-    
+    ÇIKTI FORMATI:
+    🦁 **SAFEBLADE RAPOR**
     (Her hisse için):
     ✅ **Hisse Kodu**
-    * 📊 **Teknik:** EMA20 desteğinde, trend pozitif.
-    * 📰 **Haber/Risk:** (Varsa kötü haber, yoksa "Temiz")
-    * 🗓 **Bilanço:** (Yakın zamanda bilanço var mı?)
-    * 🎯 **Karar:** "ALINABİLİR" veya "RİSKLİ/BEKLE"
+    * 📊 **Durum:** Teknik onaylı.
+    * 📰 **Haber:** (Özet)
+    * 🎯 **Karar:** "ALINABİLİR" veya "BEKLE"
     """
     
     try:
