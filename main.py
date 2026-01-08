@@ -13,7 +13,7 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# Genişletilmiş Profesyonel Liste
+# Genişletilmiş Profesyonel Liste (Buradan en iyi 5 seçilecek)
 HISSE_LISTESI = [
     "AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA",
     "AMD", "AVGO", "QCOM", "INTC", "TXN", "MU", "LRCX", "KLAC", "MRVL", "ARM", "TSM", "SMCI",
@@ -45,75 +45,69 @@ def piyasa_genel_durumu():
     """
     print("\n🌍 KÜRESEL PİYASA ANALİZİ YAPILIYOR...")
     try:
-        # Verileri çek (QQQ, VIX, TNX)
         tickers = ["QQQ", "^VIX", "^TNX"]
         data = yf.download(tickers, period="6mo", interval="1d", progress=False)
         
-        # Multi-index düzeltmesi
         if isinstance(data.columns, pd.MultiIndex):
             close_prices = data['Close']
         else:
             close_prices = data
             
-        # --- QQQ ANALİZİ (Ana Gemi) ---
+        # QQQ Analizi
         qqq_series = close_prices["QQQ"].dropna()
         qqq_ema50 = ta.trend.ema_indicator(close=qqq_series, window=50).iloc[-1]
         qqq_price = qqq_series.iloc[-1]
         qqq_durum = "POZİTİF (Trend Yukarı)" if qqq_price > qqq_ema50 else "NEGATİF (Trend Altında)"
         qqq_icon = "🟢" if qqq_price > qqq_ema50 else "🔴"
 
-        # --- VIX ANALİZİ (Korku) ---
+        # VIX Analizi
         vix_price = close_prices["^VIX"].dropna().iloc[-1]
         if vix_price < 20:
-            vix_durum = "GÜVENLİ (Düşük Korku)"
+            vix_durum = "GÜVENLİ"
             vix_icon = "🟢"
         elif vix_price < 30:
-            vix_durum = "DİKKATLİ OL (Volatilite Var)"
+            vix_durum = "VOLATİLİTE VAR"
             vix_icon = "🟡"
         else:
-            vix_durum = "TEHLİKE (Panik Satışı)"
+            vix_durum = "TEHLİKE"
             vix_icon = "🔴"
 
-        # --- TNX ANALİZİ (Faiz Baskısı) ---
+        # TNX Analizi
         tnx_price = close_prices["^TNX"].dropna().iloc[-1]
-        tnx_icon = "🟢" if tnx_price < 4.2 else "🔴" # 4.2 kritik eşik kabul edelim
+        tnx_icon = "🟢" if tnx_price < 4.2 else "🔴"
 
-        # GENEL KARAR
+        # Puanlama
         piyasa_puani = 0
         if qqq_price > qqq_ema50: piyasa_puani += 1
         if vix_price < 25: piyasa_puani += 1
         
         genel_karar = ""
         if piyasa_puani == 2:
-            genel_karar = "✅ PİYASA IŞIKLARI YEŞİL: Swing Trade İçin Uygun."
+            genel_karar = "✅ PİYASA YEŞİL: Swing Trade İçin Uygun."
         elif piyasa_puani == 1:
             genel_karar = "⚠️ PİYASA KARIŞIK: Pozisyon büyüklüğünü azalt."
         else:
             genel_karar = "⛔ PİYASA KIRMIZI: Nakitte kalmak en iyisi."
 
         rapor = (
-            f"🌍 **KÜRESEL PİYASA KOKPİTİ**\n"
-            f"{qqq_icon} **QQQ (Nasdaq):** {qqq_price:.2f} (EMA50: {qqq_ema50:.2f}) -> {qqq_durum}\n"
-            f"{vix_icon} **VIX (Korku):** {vix_price:.2f} -> {vix_durum}\n"
-            f"{tnx_icon} **TNX (Faiz):** %{tnx_price:.2f}\n"
-            f"---------------------------------\n"
-            f"🧠 **HOCA'NIN KARARI:** {genel_karar}\n"
+            f"🌍 **PİYASA KOKPİTİ**\n"
+            f"{qqq_icon} **QQQ:** {qqq_price:.2f} (EMA50: {qqq_ema50:.2f})\n"
+            f"{vix_icon} **VIX:** {vix_price:.2f}\n"
+            f"{tnx_icon} **TNX:** %{tnx_price:.2f}\n"
+            f"🧠 **KARAR:** {genel_karar}\n"
         )
         print(rapor)
         return rapor, piyasa_puani
 
     except Exception as e:
         print(f"Piyasa analizi hatası: {e}")
-        return "⚠️ Piyasa verisi çekilemedi.\n", 1 # Hata olursa nötr kabul et
+        return "⚠️ Piyasa verisi çekilemedi.\n", 1
 
 def teknik_tarama(piyasa_puani):
     print("\n" + "="*50)
-    print("🔍 HİSSE TARAMASI BAŞLIYOR...")
+    print("🔍 HİSSE TARAMASI VE SIRALAMA (TOP 5)...")
     
-    # Eğer piyasa çok kötüyse (Puan 0), tarama yapma veya uyar.
-    # Biz yine de yapalım ama kullanıcı bilsin.
-    
-    adaylar = []
+    aday_listesi = [] # Sıralama yapmak için objeleri burada tutacağız
     
     for symbol in HISSE_LISTESI:
         try:
@@ -135,45 +129,70 @@ def teknik_tarama(piyasa_puani):
 
             # STRATEJİ: SafeBlade
             if (fiyat > ema50) and (ema20 * 0.97 <= fiyat <= ema20 * 1.03) and (35 < rsi < 65):
-                bilgi = f"🔹 {symbol} | Fiyat: {fiyat:.2f} | RSI: {rsi:.1f}"
-                adaylar.append(bilgi)
-                print(f"✅ BULUNDU: {symbol}")
+                
+                # --- PUANLAMA ALGORİTMASI ---
+                # Hedef: EMA20'ye en yakın olanı bulmak.
+                # Formül: Fiyat ile EMA20 arasındaki yüzdesel fark. (Sıfıra ne kadar yakınsa o kadar iyi)
+                uzaklik_score = abs(fiyat - ema20) / ema20
+                
+                bilgi_metni = f"🔹 {symbol} | Fiyat: {fiyat:.2f} | EMA20 Fark: %{uzaklik_score*100:.2f}"
+                
+                # Listeye "score" ile birlikte ekliyoruz
+                aday_listesi.append({
+                    'symbol': symbol,
+                    'text': bilgi_metni,
+                    'score': uzaklik_score 
+                })
+                print(f"✅ ADAY: {symbol} (Fark: %{uzaklik_score*100:.2f})")
+                
         except Exception:
             continue
             
-    return adaylar
+    # --- TOP 5 SIRALAMA MANTIĞI ---
+    if not aday_listesi:
+        return []
+
+    # 'score' değerine göre (küçükten büyüğe) sırala. En küçük fark = En iyi aday.
+    aday_listesi.sort(key=lambda x: x['score'])
+    
+    # İlk 5 tanesini al
+    top_5 = aday_listesi[:5]
+    
+    print(f"\n🏆 TOP 5 SEÇİLDİ: {[x['symbol'] for x in top_5]}")
+    
+    # Sadece metin kısmını döndür
+    return [x['text'] for x in top_5]
 
 def gemini_analizi(piyasa_raporu, adaylar):
     if not adaylar:
-        return f"{piyasa_raporu}\n📉 **SONUÇ:** Piyasa analizinden sonra hisse taraması yapıldı ancak stratejiye uyan (EMA 20 Pullback) hisse bulunamadı."
+        return f"{piyasa_raporu}\n📉 **SONUÇ:** Stratejiye uyan hisse bulunamadı."
     
     hisseler_str = "\n".join(adaylar)
     tarih = datetime.datetime.now(pytz.timezone('Europe/Istanbul')).strftime("%d %B %Y")
     
     prompt = f"""
     TARİH: {tarih}
-    GÖREV: Borsa Yatırım Danışmanı olarak rapor yaz.
+    GÖREV: Aşağıda SafeBlade stratejime göre EMA20 desteğine EN YAKIN (En iyi teknik giriş) 5 hisseyi seçtim.
     
-    1. KISIM: AŞAĞIDAKİ PİYASA ANALİZİNİ ÖZETLE:
+    PİYASA DURUMU:
     {piyasa_raporu}
     
-    2. KISIM: AŞAĞIDAKİ HİSSELERİ ANALİZ ET:
+    SEÇİLEN TOP 5 HİSSE:
     {hisseler_str}
     
-    Bu hisseler teknik olarak EMA20 desteğinde. 
-    Google Aramayı kullanarak bu hisseler için: "Kötü haber" ve "Bilanço tarihi" kontrolü yap.
+    YAPMAN GEREKEN:
+    Google Aramayı kullanarak bu 5 hisse için "Haber" ve "Bilanço" taraması yap.
     
-    ÇIKTI FORMATI (Telegram İçin):
-    🌍 **SAFEBLADE GÜNLÜK BÜLTEN**
+    ÇIKTI FORMATI (Kısa ve Net):
+    🌍 **SAFEBLADE TOP 5 BÜLTENİ**
     
-    (Buraya Piyasa Yorumunu Kısaca Yaz)
+    (Piyasa yorumu tek cümle)
     
-    🚀 **FIRSAT ADAYLARI**
+    🚀 **GÜNÜN YILDIZLARI**
     (Her hisse için):
     ✅ **Hisse Kodu**
-    * 📊 Teknik: EMA20 Teması.
-    * 📰 Haber/Risk: ...
-    * 🎯 Karar: "GİR" veya "BEKLE"
+    * 📰 **Haber/Risk:** (Varsa kısaca yaz yoksa "Temiz")
+    * 🎯 **Hoca'nın Notu:** "GİR" veya "BEKLE"
     """
     
     try:
@@ -190,12 +209,8 @@ def gemini_analizi(piyasa_raporu, adaylar):
         return f"AI Hatası: {e}"
 
 if __name__ == "__main__":
-    # 1. Piyasaya Bak
     piyasa_metni, puan = piyasa_genel_durumu()
-    
-    # 2. Hisseleri Tara
+    # Puan ne olursa olsun taramayı yap, kararı kullanıcıya bırak (ama uyarıyı göster)
     adaylar = teknik_tarama(puan)
-    
-    # 3. Raporu Oluştur ve Gönder
     final_rapor = gemini_analizi(piyasa_metni, adaylar)
     telegrama_gonder(final_rapor)
