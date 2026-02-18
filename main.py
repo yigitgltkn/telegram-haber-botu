@@ -5,7 +5,9 @@ import pytz
 import time
 import yfinance as yf
 import pandas as pd
-import ta  # Standart 'ta' kütüphanesi
+import ta
+import mplfinance as mpf
+from io import BytesIO
 from google import genai
 from google.genai import types
 
@@ -13,242 +15,230 @@ from google.genai import types
 GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
-
-# Model Adı (Görseldeki isteğine uygun)
 MODEL_NAME = "gemini-3-pro-preview"
 
 # --- 🛠️ YARDIMCI FONKSİYONLAR ---
 
-def telegrama_gonder(mesaj):
-    """Mesajı Telegram botuna gönderir."""
+def telegram_foto_gonder(caption, image_buffer):
     if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
-        print("❌ Telegram ayarları eksik! Mesaj konsola yazılıyor...")
+        print(caption)
+        return
+    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendPhoto"
+    files = {'photo': ('chart.png', image_buffer, 'image/png')}
+    data = {'chat_id': TELEGRAM_CHAT_ID, 'caption': caption, 'parse_mode': 'Markdown'}
+    try: requests.post(url, files=files, data=data)
+    except Exception as e: print(f"Hata: {e}")
+
+def telegram_mesaj_gonder(mesaj):
+    if not TELEGRAM_BOT_TOKEN or not TELEGRAM_CHAT_ID:
         print(mesaj)
         return
+    requests.post(f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage", 
+                  data={'chat_id': TELEGRAM_CHAT_ID, 'text': mesaj, 'parse_mode': 'Markdown'})
 
-    url = f"https://api.telegram.org/bot{TELEGRAM_BOT_TOKEN}/sendMessage"
-    limit = 4000
-    parcalar = [mesaj[i:i+limit] for i in range(0, len(mesaj), limit)]
-    
+def grafik_ciz(df, symbol):
     try:
-        for parca in parcalar:
-            payload = {'chat_id': TELEGRAM_CHAT_ID, 'text': parca, 'parse_mode': 'Markdown'}
-            requests.post(url, data=payload)
-        print("✅ Rapor Telegram'a gönderildi.")
-    except Exception as e:
-        print(f"❌ Telegram hatası: {e}")
+        # Türkiye saatini al
+        tr_time = datetime.datetime.now(pytz.timezone('Europe/Istanbul')).strftime("%H:%M")
+        
+        # Grafik Stili
+        s = mpf.make_mpf_style(base_mpf_style='yahoo', rc={'font.size': 10})
+        apds = [
+            mpf.make_addplot(df['EMA_20'], color='orange', width=1.5),
+            mpf.make_addplot(df['EMA_50'], color='blue', width=1.5),
+        ]
+        
+        buf = BytesIO()
+        # Son 60 mum (Günlük)
+        mpf.plot(
+            df.iloc[-60:], 
+            type='candle', 
+            style=s, 
+            addplot=apds[-60:], 
+            title=f"\n{symbol} - SafeBlade Analiz ({tr_time})",
+            volume=True, 
+            savefig=dict(fname=buf, dpi=100, bbox_inches='tight')
+        )
+        buf.seek(0)
+        return buf
+    except: return None
 
 def get_nasdaq100_tickers():
-    """Wikipedia'dan güncel NASDAQ 100 listesini çeker."""
-    print("🌍 NASDAQ 100 Listesi güncelleniyor...")
-    fallback_list = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AMD", "QCOM", "INTC"]
-    
+    print("🌍 NASDAQ 100 Listesi çekiliyor...")
+    fallback = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "TSLA", "AMD", "QCOM", "INTC"]
     try:
         url = "https://en.wikipedia.org/wiki/Nasdaq-100"
         tables = pd.read_html(url)
-        
-        nasdaq_table = None
-        for table in tables:
-            if 'Ticker' in table.columns or 'Symbol' in table.columns:
-                nasdaq_table = table
-                break
-        
-        if nasdaq_table is not None:
+        nasdaq_table = next((t for t in tables if 'Ticker' in t.columns or 'Symbol' in t.columns), None)
+        if nasdaq_table:
             col = 'Ticker' if 'Ticker' in nasdaq_table.columns else 'Symbol'
-            tickers = nasdaq_table[col].tolist()
-            tickers = [t.replace('.', '-') for t in tickers]
-            print(f"✅ {len(tickers)} hisse listeye alındı.")
-            return tickers
-        else:
-            print("⚠️ Tablo bulunamadı, yedek liste kullanılıyor.")
-            return fallback_list
-            
-    except Exception as e:
-        print(f"❌ Liste çekme hatası: {e}. Yedek liste devrede.")
-        return fallback_list
+            return [t.replace('.', '-') for t in nasdaq_table[col].tolist()]
+    except: pass
+    return fallback
 
 # --- 📊 ANALİZ MOTORU ---
 
 def piyasa_genel_durumu():
-    """QQQ ve VIX ile piyasanın genel yönünü belirler."""
-    print("\n🌍 KÜRESEL PİYASA ANALİZİ...")
     try:
-        tickers = ["QQQ", "^VIX", "^TNX"]
-        data = yf.download(tickers, period="6mo", interval="1d", progress=False)
+        # Piyasayı en güncel haliyle çek
+        data = yf.download(["QQQ", "^VIX"], period="6mo", interval="1d", progress=False)
+        close = data['Close'] if 'Close' in data else data
         
-        if isinstance(data.columns, pd.MultiIndex):
-            close = data.xs('Close', level=0, axis=1)
-        else:
-            close = data['Close']
-            
         qqq_series = close["QQQ"].dropna()
-        vix_price = close["^VIX"].dropna().iloc[-1]
-        tnx_price = close["^TNX"].dropna().iloc[-1]
+        qqq_now = qqq_series.iloc[-1]
+        vix_now = close["^VIX"].dropna().iloc[-1]
         
-        # 'ta' kütüphanesi ile EMA hesabı
-        qqq_ema50 = ta.trend.ema_indicator(close=qqq_series, window=50).iloc[-1]
-        qqq_price = qqq_series.iloc[-1]
+        qqq_ema50 = ta.trend.ema_indicator(qqq_series, window=50).iloc[-1]
         
-        piyasa_puani = 0
-        qqq_durum = "YUKARI" if qqq_price > qqq_ema50 else "AŞAĞI"
-        if qqq_price > qqq_ema50: piyasa_puani += 1
-        if vix_price < 22: piyasa_puani += 1
+        durum = "POZİTİF (Boğa)" if qqq_now > qqq_ema50 else "NEGATİF (Ayı)"
+        ikon = "🟢" if durum.startswith("POZİTİF") and vix_now < 22 else "🔴"
         
-        ikon = "🟢" if piyasa_puani == 2 else "🟡" if piyasa_puani == 1 else "🔴"
-        
-        rapor = (
-            f"🌍 **PİYASA KOKPİTİ** {ikon}\n"
-            f"📈 **QQQ:** {qqq_price:.2f} (Trend: {qqq_durum})\n"
-            f"😨 **VIX:** {vix_price:.2f} (Risk İştahı: {'Açık' if vix_price<20 else 'Kapalı'})\n"
-            f"🇺🇸 **Faiz (TNX):** %{tnx_price:.2f}\n"
-            f"---------------------------------"
-        )
-        print(rapor)
-        return rapor, piyasa_puani
-
-    except Exception as e:
-        print(f"Piyasa analizi hatası: {e}")
-        return "⚠️ Piyasa verisi alınamadı.", 1
+        return f"🌍 **PİYASA:** {durum} {ikon}\n📉 **VIX:** {vix_now:.2f} (Risk Seviyesi)", durum
+    except: return "⚠️ Piyasa verisi alınamadı.", "NÖTR"
 
 def teknik_tarama(tickers_list):
-    """Verilen listeyi SafeBlade stratejisine göre tarar."""
-    print(f"\n🚀 {len(tickers_list)} Hisse taranıyor (Bulk Download)...")
-    
+    print(f"\n🚀 {len(tickers_list)} Hisse taranıyor (Canlı Veri)...")
     aday_listesi = []
     
     try:
-        tickers_str = " ".join(tickers_list)
-        data = yf.download(tickers_str, period="6mo", interval="1d", group_by='ticker', threads=True, progress=True)
-    except Exception as e:
-        print(f"Veri indirme hatası: {e}")
-        return []
+        # Veriyi çekerken threads kullanıyoruz, en son veriyi alıyoruz
+        data = yf.download(" ".join(tickers_list), period="6mo", interval="1d", group_by='ticker', threads=True)
+    except: return []
 
-    print("\n⚡ Teknik indikatörler hesaplanıyor...")
-    
     for symbol in tickers_list:
         try:
             if symbol not in data: continue
+            # dropna() ile eksik verileri at ama son satırın (bugünün) durduğundan emin ol
             df = data[symbol].copy()
-            
-            if df.empty or len(df) < 50: continue
-            df.dropna(inplace=True)
             if len(df) < 50: continue
+            
+            # Eğer son mumun verisi tam değilse (NaN varsa) onu atma, hesaplamaya dahil et
+            # yfinance bazen son günü NaN getirebilir, onu temizle:
+            if pd.isna(df['Close'].iloc[-1]):
+                df = df.iloc[:-1]
 
-            # --- İNDİKATÖRLER (Standart 'ta' kütüphanesi) ---
-            df['EMA_50'] = ta.trend.ema_indicator(close=df['Close'], window=50)
-            df['EMA_20'] = ta.trend.ema_indicator(close=df['Close'], window=20)
-            df['RSI'] = ta.momentum.rsi(close=df['Close'], window=14)
-            df['ATR'] = ta.volatility.average_true_range(high=df['High'], low=df['Low'], close=df['Close'], window=14)
-            df['Vol_SMA'] = ta.trend.sma_indicator(close=df['Volume'], window=20) # Hacim Ortalaması
+            # İndikatörler
+            df['EMA_50'] = ta.trend.ema_indicator(df['Close'], window=50)
+            df['EMA_20'] = ta.trend.ema_indicator(df['Close'], window=20)
+            df['RSI'] = ta.momentum.rsi(df['Close'], window=14)
+            df['ATR'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close'], window=14)
+            
+            # MACD
+            macd = ta.trend.MACD(df['Close'])
+            df['MACD_Diff'] = macd.macd_diff()
 
-            # Son gün verileri
             son = df.iloc[-1]
+            
             fiyat = float(son['Close'])
-            ema50 = float(son['EMA_50'])
             ema20 = float(son['EMA_20'])
-            rsi = float(son['RSI'])
-            atr = float(son['ATR'])
-            vol = float(son['Volume'])
-            vol_sma = float(son['Vol_SMA'])
+            ema50 = float(son['EMA_50'])
 
-            # --- STRATEJİ: SafeBlade ---
-            kosul_trend = fiyat > ema50
-            kosul_pullback = (ema20 * 0.97) <= fiyat <= (ema20 * 1.03)
-            kosul_rsi = 40 < rsi < 65
-            kosul_hacim = vol < (vol_sma * 2.5)
+            # --- 1. KATMAN: STRICT SAFEBLADE ---
+            k_trend = fiyat > ema50
+            # Destek: EMA20'nin %0.5 altı ile %4 üstü arası (Sarkmalara az tolerans)
+            k_destek = (ema20 * 0.995) <= fiyat <= (ema20 * 1.04)
+            k_rsi = 40 < son['RSI'] < 65
 
-            if kosul_trend and kosul_pullback and kosul_rsi and kosul_hacim:
-                fark_yuzde = abs(fiyat - ema20) / ema20
-                stop_loss = fiyat - (2 * atr)
-                risk_orani = (fiyat - stop_loss) / fiyat * 100
+            if k_trend and k_destek and k_rsi:
+                puan = 0
+                sinyaller = []
+
+                # --- 2. KATMAN: TEYİTLER ---
+                # A) MACD Dönüşü (Histogram yükseliyor mu?)
+                if df['MACD_Diff'].iloc[-1] > df['MACD_Diff'].iloc[-2]:
+                    puan += 2
+                    sinyaller.append("MACD Al")
                 
-                text = (
-                    f"🔹 **{symbol}** (${fiyat:.2f})\n"
-                    f"   📊 **EMA20 Fark:** %{fark_yuzde*100:.2f} | **RSI:** {rsi:.1f}\n"
-                    f"   🛡️ **Stop:** {stop_loss:.2f} (Risk: %{risk_orani:.1f})"
-                )
+                # B) Hammer Mumu
+                govde = abs(son['Close'] - son['Open'])
+                alt_fitil = min(son['Open'], son['Close']) - son['Low']
+                ust_fitil = son['High'] - max(son['Open'], son['Close'])
+                if (alt_fitil > 2 * govde) and (ust_fitil < govde):
+                    puan += 3
+                    sinyaller.append("🔥 HAMMER")
+
+                # C) Hacim Patlaması Yok (Sakin düşüş)
+                vol_avg = df['Volume'].rolling(20).mean().iloc[-1]
+                if son['Volume'] < (vol_avg * 2.5):
+                    puan += 1
+
+                fark_yuzde = abs(fiyat - ema20) / ema20
                 
                 aday_listesi.append({
                     'symbol': symbol,
-                    'text': text,
-                    'score': fark_yuzde 
+                    'fiyat': fiyat,
+                    'stop': fiyat - (2 * son['ATR']),
+                    'score': fark_yuzde,
+                    'extra_puan': puan,
+                    'sinyaller': ", ".join(sinyaller) if sinyaller else "Destek Testi",
+                    'df': df
                 })
-                
-        except Exception:
-            continue
+        except: continue
 
-    if not aday_listesi:
-        return []
+    # Puanı yüksek olan en üstte
+    aday_listesi.sort(key=lambda x: (-x['extra_puan'], x['score']))
+    return aday_listesi[:3]
 
-    aday_listesi.sort(key=lambda x: x['score'])
-    top_5 = aday_listesi[:5]
-    print(f"✅ Filtreden geçen: {len(aday_listesi)} | Seçilen Top 5: {[x['symbol'] for x in top_5]}")
-    return [x['text'] for x in top_5]
-
-def gemini_analizi(piyasa_raporu, adaylar):
-    """Gemini 3 Pro Preview kullanarak analiz yapar."""
-    
+def gemini_ve_gonder(piyasa_raporu, adaylar):
     if not adaylar:
-        return f"{piyasa_raporu}\n\n📉 **SONUÇ:** Stratejiye uygun hisse bulunamadı. Nakitte bekle."
+        telegram_mesaj_gonder(f"{piyasa_raporu}\n\n📉 Kriterlere uyan hisse yok.")
+        return
 
-    hisseler_str = "\n".join(adaylar)
-    tarih = datetime.datetime.now(pytz.timezone('Europe/Istanbul')).strftime("%d %B %Y")
+    print("🧠 Gemini Haberleri Tarıyor (Canlı)...")
+    client = genai.Client(api_key=GEMINI_API_KEY)
     
-    prompt = f"""
-    Sen uzman bir borsa asistanısın. Tarih: {tarih}
+    # Zaman Bilgisi (New York ve İstanbul)
+    ist_time = datetime.datetime.now(pytz.timezone('Europe/Istanbul')).strftime("%d %B %Y %H:%M")
+    ny_time = datetime.datetime.now(pytz.timezone('America/New_York')).strftime("%H:%M")
 
-    PİYASA ÖZETİ:
-    {piyasa_raporu}
+    # Başlık
+    telegram_mesaj_gonder(f"🌍 **SAFEBLADE CANLI RAPOR**\n⏰ IST: {ist_time} | NY: {ny_time}\n{piyasa_raporu}")
 
-    TEKNİK OLARAK GİRİŞ VEREN HİSSELER (SafeBlade Stratejisi):
-    {hisseler_str}
-
-    GÖREVİN:
-    Bu hisseler teknik olarak "Al" veriyor (EMA20 desteğinde).
-    Google Search Tool kullanarak her bir şirket için şu riskleri kontrol et:
-    1. **Bilanço (Earnings):** Önümüzdeki 5 gün içinde bilanço açıklayacak mı? (Varsa UYAR).
-    2. **Haber Akışı:** Son 48 saatte hisseyi düşürecek çok kötü bir haber var mı?
-
-    ÇIKTI FORMATI (Telegram için):
-    🌍 **SAFEBLADE NASDAQ RAPORU** ({tarih})
-    
-    (Piyasa hakkında tek cümlelik yorum)
-
-    🚀 **GÜNÜN FIRSATLARI**
-    
-    1️⃣ **HİSSE KODU**
-       💡 **Teknik:** (Kısaca durumu öv)
-       📅 **Bilanço:** [Tarih veya "Yakın Takvim Yok"] 
-       ⚠️ **Risk Durumu:** [Varsa haberi yaz yoksa "Negatif akış yok" yaz]
-       🎯 **Karar:** "GİRİLEBİLİR" veya "BEKLE"
-
-    (Bunu seçilen her hisse için yap)
-    ⚠️ *Yasal Uyarı: Yatırım tavsiyesi değildir.*
-    """
-
-    print(f"\n🧠 {MODEL_NAME} Analiz Yapıyor...")
-    
-    try:
-        client = genai.Client(api_key=GEMINI_API_KEY)
-        response = client.models.generate_content(
-            model=MODEL_NAME, 
-            contents=prompt,
-            config=types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-                response_mime_type="text/plain"
+    for hisse in adaylar:
+        symbol = hisse['symbol']
+        grafik = grafik_ciz(hisse['df'], symbol)
+        
+        # --- GÜNCELLENMİŞ PROMPT (SON DAKİKA ODAKLI) ---
+        prompt = f"""
+        Hisse: {symbol}
+        Fiyat: {hisse['fiyat']}
+        Teknik Durum: {hisse['sinyaller']}
+        
+        GÖREV:
+        1. Bu hisse için Google'da "SON 24 SAAT" içindeki haberleri ara.
+        2. Özellikle "Earnings" (Bilanço) ve "Breaking News" (Son Dakika) var mı bak.
+        3. Eski haberleri görmezden gel, sadece bugünün gündemine odaklan.
+        
+        TELEGRAM MESAJI FORMATI:
+        📊 **{symbol}** (${hisse['fiyat']:.2f})
+        
+        💡 **Teknik:** {hisse['sinyaller']} (EMA20 Desteğinde)
+        📅 **Bilanço:** [Tarih ve Durum]
+        📰 **Haber (Canlı):** [Son 24 saatte kritik bir haber var mı? Yoksa "Akış Sakin" yaz.]
+        🛡️ **Stop-Loss:** {hisse['stop']:.2f}
+        """
+        
+        try:
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=prompt,
+                config=types.GenerateContentConfig(
+                    tools=[types.Tool(google_search=types.GoogleSearch())],
+                    response_mime_type="text/plain"
+                )
             )
-        )
-        return response.text
-    except Exception as e:
-        return f"{piyasa_raporu}\n\n⚠️ AI Analizi Hatası: {e}\n\n{hisseler_str}"
+            yorum = response.text
+        except Exception as e:
+            yorum = f"📊 **{symbol}**\n⚠️ AI Bağlantı Hatası: {e}"
+
+        if grafik: telegram_foto_gonder(yorum, grafik)
+        else: telegram_mesaj_gonder(yorum)
+        time.sleep(1)
 
 if __name__ == "__main__":
-    start_time = time.time()
-    
-    piyasa_metni, puan = piyasa_genel_durumu()
-    hisse_listesi = get_nasdaq100_tickers()
-    en_iyi_adaylar = teknik_tarama(hisse_listesi)
-    final_rapor = gemini_analizi(piyasa_metni, en_iyi_adaylar)
-    telegrama_gonder(final_rapor)
-    
-    print(f"\n⏱️ Toplam Süre: {time.time() - start_time:.2f} saniye.")
+    start = time.time()
+    piyasa_metni, durum = piyasa_genel_durumu()
+    tickers = get_nasdaq100_tickers()
+    en_iyiler = teknik_tarama(tickers)
+    gemini_ve_gonder(piyasa_metni, en_iyiler)
+    print(f"\n✅ Tamamlandı. Süre: {time.time() - start:.2f} sn.")
