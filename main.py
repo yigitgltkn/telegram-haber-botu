@@ -5,7 +5,7 @@ import pytz
 import time
 import yfinance as yf
 import pandas as pd
-import pandas_ta as ta
+import ta  # Standart 'ta' kütüphanesi
 from google import genai
 from google.genai import types
 
@@ -14,8 +14,8 @@ GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY")
 TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN")
 TELEGRAM_CHAT_ID = os.environ.get("TELEGRAM_CHAT_ID")
 
-# 🔥 GÖRSELDEKİ MODEL AYARI BURADA YAPILDI:
-MODEL_NAME = "gemini-3-pro-preview" 
+# Model Adı (Görseldeki isteğine uygun)
+MODEL_NAME = "gemini-3-pro-preview"
 
 # --- 🛠️ YARDIMCI FONKSİYONLAR ---
 
@@ -85,7 +85,8 @@ def piyasa_genel_durumu():
         vix_price = close["^VIX"].dropna().iloc[-1]
         tnx_price = close["^TNX"].dropna().iloc[-1]
         
-        qqq_ema50 = ta.ema(qqq_series, length=50).iloc[-1]
+        # 'ta' kütüphanesi ile EMA hesabı
+        qqq_ema50 = ta.trend.ema_indicator(close=qqq_series, window=50).iloc[-1]
         qqq_price = qqq_series.iloc[-1]
         
         piyasa_puani = 0
@@ -133,13 +134,14 @@ def teknik_tarama(tickers_list):
             df.dropna(inplace=True)
             if len(df) < 50: continue
 
-            # --- İNDİKATÖRLER (pandas_ta) ---
-            df['EMA_50'] = ta.ema(df['Close'], length=50)
-            df['EMA_20'] = ta.ema(df['Close'], length=20)
-            df['RSI'] = ta.rsi(df['Close'], length=14)
-            df['ATR'] = ta.atr(df['High'], df['Low'], df['Close'], length=14)
-            df['Vol_SMA'] = ta.sma(df['Volume'], length=20)
+            # --- İNDİKATÖRLER (Standart 'ta' kütüphanesi) ---
+            df['EMA_50'] = ta.trend.ema_indicator(close=df['Close'], window=50)
+            df['EMA_20'] = ta.trend.ema_indicator(close=df['Close'], window=20)
+            df['RSI'] = ta.momentum.rsi(close=df['Close'], window=14)
+            df['ATR'] = ta.volatility.average_true_range(high=df['High'], low=df['Low'], close=df['Close'], window=14)
+            df['Vol_SMA'] = ta.trend.sma_indicator(close=df['Volume'], window=20) # Hacim Ortalaması
 
+            # Son gün verileri
             son = df.iloc[-1]
             fiyat = float(son['Close'])
             ema50 = float(son['EMA_50'])
@@ -229,7 +231,7 @@ def gemini_analizi(piyasa_raporu, adaylar):
     try:
         client = genai.Client(api_key=GEMINI_API_KEY)
         response = client.models.generate_content(
-            model=MODEL_NAME,  # <-- BURASI GÜNCELLENDİ
+            model=MODEL_NAME, 
             contents=prompt,
             config=types.GenerateContentConfig(
                 tools=[types.Tool(google_search=types.GoogleSearch())],
