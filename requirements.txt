@@ -3,4 +3,5 @@ requests
 pytz
 yfinance
 pandas
-ta
+pandas_ta
+lxml
