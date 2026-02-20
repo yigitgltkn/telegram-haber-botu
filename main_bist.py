@@ -81,21 +81,23 @@ def get_bist_tickers():
 
 def piyasa_genel_durumu():
     try:
-        # Hata vermemesi için alternatifli yapı kuruyoruz
         data = yf.download("XU100.IS", period="6mo", interval="1d", progress=False)
         
         if data is None or data.empty:
             return "⚠️ BİST100 verisi anlık olarak çekilemedi (Yahoo Finance yanıt vermedi).", "NÖTR"
             
-        close = data['Close'] if 'Close' in data else data
+        close_data = data['Close'] if 'Close' in data else data
         
-        xu100_now = close.dropna().iloc[-1]
-        xu100_ema50 = ta.trend.ema_indicator(close.dropna(), window=50).iloc[-1]
+        # yfinance hatası çözümü: .squeeze() ile iki boyutlu tabloyu tek boyutlu seriye çeviriyoruz
+        close_series = close_data.squeeze().dropna()
         
-        durum = "POZİTİF (Boğa)" if float(xu100_now) > float(xu100_ema50) else "NEGATİF (Ayı)"
+        xu100_now = float(close_series.iloc[-1])
+        xu100_ema50 = float(ta.trend.ema_indicator(close_series, window=50).iloc[-1])
+        
+        durum = "POZİTİF (Boğa)" if xu100_now > xu100_ema50 else "NEGATİF (Ayı)"
         ikon = "🟢" if durum.startswith("POZİTİF") else "🔴"
         
-        return f"🇹🇷 **BİST100 PİYASA:** {durum} {ikon}\n📉 **Endeks:** {float(xu100_now):.2f}", durum
+        return f"🇹🇷 **BİST100 PİYASA:** {durum} {ikon}\n📉 **Endeks:** {xu100_now:.2f}", durum
     except Exception as e: 
         return f"⚠️ Piyasa verisi alınamadı. Detay: {e}", "NÖTR"
 
@@ -141,10 +143,15 @@ def teknik_tarama(tickers_list):
             if pd.isna(df['Close'].iloc[-1]): 
                 df = df.iloc[:-1]
 
-            df['EMA_50'] = ta.trend.ema_indicator(df['Close'], window=50)
-            df['EMA_20'] = ta.trend.ema_indicator(df['Close'], window=20)
-            df['RSI'] = ta.momentum.rsi(df['Close'], window=14)
-            df['ATR'] = ta.volatility.average_true_range(df['High'], df['Low'], df['Close'], window=14)
+            # Teknik hesaplamalar için serileri garantiliyoruz
+            close_s = df['Close'].squeeze()
+            high_s = df['High'].squeeze()
+            low_s = df['Low'].squeeze()
+
+            df['EMA_50'] = ta.trend.ema_indicator(close_s, window=50)
+            df['EMA_20'] = ta.trend.ema_indicator(close_s, window=20)
+            df['RSI'] = ta.momentum.rsi(close_s, window=14)
+            df['ATR'] = ta.volatility.average_true_range(high_s, low_s, close_s, window=14)
 
             son = df.iloc[-1]
             fiyat = float(son['Close'])
@@ -154,7 +161,7 @@ def teknik_tarama(tickers_list):
             k_trend = fiyat > ema50
             # Fiyat EMA20'ye yakın olmalı (Hafif sarkmalar kabul edilebilir)
             k_destek = (ema20 * 0.985) <= fiyat <= (ema20 * 1.05)
-            k_rsi = 35 < son['RSI'] < 65
+            k_rsi = 35 < float(son['RSI']) < 65
 
             if k_trend and k_destek and k_rsi:
                 fark_yuzde = abs(fiyat - ema20) / ema20
@@ -166,7 +173,7 @@ def teknik_tarama(tickers_list):
                     'sinyaller': f"RSI: {float(son['RSI']):.2f} - Destek Testi",
                     'df': df
                 })
-        except: 
+        except Exception as e:
             continue
 
     # EMA20'ye en yakın olanları en üste al
@@ -207,26 +214,38 @@ def gemini_ve_gonder(piyasa_raporu, adaylar):
         🛡️ **Stop-Loss:** {hisse['stop']:.2f} TL
         """
         
-        try:
-            response = client.models.generate_content(
-                model=MODEL_NAME, 
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    tools=[types.Tool(google_search=types.GoogleSearch())], 
-                    response_mime_type="text/plain"
+        yorum = ""
+        max_deneme = 3  # Gemini 503 hatası için maksimum deneme sayısı
+        
+        for deneme in range(max_deneme):
+            try:
+                response = client.models.generate_content(
+                    model=MODEL_NAME, 
+                    contents=prompt,
+                    config=types.GenerateContentConfig(
+                        tools=[types.Tool(google_search=types.GoogleSearch())], 
+                        response_mime_type="text/plain"
+                    )
                 )
-            )
-            yorum = response.text
-        except Exception as e:
-            yorum = f"📊 **{symbol.replace('.IS', '')}**\n⚠️ AI Bağlantı Hatası: {e}"
+                yorum = response.text
+                break # Başarılı olduysa döngüden çık
+                
+            except Exception as e:
+                hata_mesaji = str(e)
+                # Eğer hata 503 ise ve hala deneme hakkımız varsa bekle ve tekrar dene
+                if "503" in hata_mesaji and deneme < max_deneme - 1:
+                    print(f"⏳ Gemini sunucuları yoğun. 20 saniye bekleniyor... (Deneme {deneme+1}/{max_deneme})")
+                    time.sleep(20)
+                else:
+                    yorum = f"📊 **{symbol.replace('.IS', '')}**\n⚠️ AI Bağlantı Hatası: {hata_mesaji}"
+                    break # Başka bir hataysa veya deneme hakkı bittiyse pes et
 
         if grafik: 
             telegram_foto_gonder(yorum, grafik)
         else: 
             telegram_mesaj_gonder(yorum)
             
-        # API'nin nefes alması ve 503 hatası vermemesi için bekleme süresini 15 saniyeye çıkardık
-        time.sleep(15)
+        time.sleep(10) # Her hisse arasında standart bekleme süresi
 
 if __name__ == "__main__":
     start = time.time()
