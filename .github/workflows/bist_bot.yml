@@ -1,0 +1,35 @@
+name: BIST SafeBlade Bot
+
+on:
+  schedule:
+    # GitHub Actions UTC zaman dilimi kullanır.
+    # Türkiye (UTC+3) saatine göre 18:30'da çalışması için UTC'de 15:30 yapıyoruz.
+    # 1-5 arası (Pazartesi'den Cuma'ya) BIST'in açık olduğu günler çalışır.
+    - cron: '30 15 * * 1-5'
+  workflow_dispatch: # Manuel tetikleme butonu ekler
+
+jobs:
+  run-bist-bot:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Depoyu Klonla
+      uses: actions/checkout@v3
+
+    - name: Python'u Kur
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10' # Mevcut sürümünüz hangisiyse onu kullanın
+
+    - name: Gerekli Kütüphaneleri Yükle
+      run: |
+        python -m pip install --upgrade pip
+        pip install -r requirements.txt
+
+    - name: BIST Botunu Çalıştır
+      env:
+        GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+        TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      run: |
+        python main_bist.py
