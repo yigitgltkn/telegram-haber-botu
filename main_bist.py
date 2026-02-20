@@ -81,7 +81,12 @@ def get_bist_tickers():
 
 def piyasa_genel_durumu():
     try:
+        # Hata vermemesi için alternatifli yapı kuruyoruz
         data = yf.download("XU100.IS", period="6mo", interval="1d", progress=False)
+        
+        if data is None or data.empty:
+            return "⚠️ BİST100 verisi anlık olarak çekilemedi (Yahoo Finance yanıt vermedi).", "NÖTR"
+            
         close = data['Close'] if 'Close' in data else data
         
         xu100_now = close.dropna().iloc[-1]
@@ -91,8 +96,8 @@ def piyasa_genel_durumu():
         ikon = "🟢" if durum.startswith("POZİTİF") else "🔴"
         
         return f"🇹🇷 **BİST100 PİYASA:** {durum} {ikon}\n📉 **Endeks:** {float(xu100_now):.2f}", durum
-    except: 
-        return "⚠️ Piyasa verisi alınamadı.", "NÖTR"
+    except Exception as e: 
+        return f"⚠️ Piyasa verisi alınamadı. Detay: {e}", "NÖTR"
 
 def bist_temel_tarama(tickers_list):
     print("🔍 Temel Analiz Taraması Başlıyor (Ucuzluk Filtresi)...")
@@ -219,7 +224,9 @@ def gemini_ve_gonder(piyasa_raporu, adaylar):
             telegram_foto_gonder(yorum, grafik)
         else: 
             telegram_mesaj_gonder(yorum)
-        time.sleep(2)
+            
+        # API'nin nefes alması ve 503 hatası vermemesi için bekleme süresini 15 saniyeye çıkardık
+        time.sleep(15)
 
 if __name__ == "__main__":
     start = time.time()
