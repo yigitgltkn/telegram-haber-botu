@@ -1,6 +1,6 @@
 name: SafeBlade Trader Bot
 
-on:
+# on:
   schedule:
     - cron: '0 20 * * 1-5' # TR 23:00
   workflow_dispatch:
