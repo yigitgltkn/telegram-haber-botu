@@ -1,6 +1,7 @@
+
 name: BIST SafeBlade Bot
 
-on:
+# on:
   schedule:
     # GitHub Actions UTC zaman dilimi kullanır.
     # Türkiye (UTC+3) saatine göre 18:30'da çalışması için UTC'de 15:30 yapıyoruz.
